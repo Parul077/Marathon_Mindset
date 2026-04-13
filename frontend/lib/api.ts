@@ -1,10 +1,5 @@
-// In production, set NEXT_PUBLIC_API_URL in Vercel environment variables
-// to your Railway backend URL e.g.:
-// https://your-app.up.railway.app/api/users
-// In development it falls back to localhost automatically.
-
 const BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/users";
+  process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api/users";
 
 function getToken(): string | null {
   return typeof window !== "undefined" ? localStorage.getItem("token") : null;
