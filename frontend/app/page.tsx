@@ -8,12 +8,18 @@ export default function Home() {
   const [visibleSections, setVisibleSections] = useState<Set<string>>(
     new Set(),
   );
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  // Close mobile menu on scroll
+  useEffect(() => {
+    if (mobileMenuOpen) setMobileMenuOpen(false);
+  }, [scrolled]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -120,26 +126,83 @@ export default function Home() {
         }
         .nav-logo {
           font-family: 'Playfair Display', serif;
-          font-size: 1.2rem; font-weight: 700;
+          font-size: 1.15rem; font-weight: 700;
           color: var(--forest); letter-spacing: -0.02em;
           display: flex; align-items: center; gap: 0.5rem;
           text-decoration: none;
+          white-space: nowrap;
+          flex-shrink: 0;
         }
-        .nav-logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
-        .nav-links { display: flex; align-items: center; gap: 2rem; list-style: none; }
+        .nav-logo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); flex-shrink: 0; }
+
+        /* Desktop nav links */
+        .nav-links {
+          display: flex; align-items: center; gap: 2rem; list-style: none;
+        }
         .nav-links a {
           font-size: 0.875rem; font-weight: 400;
           color: var(--text-muted); text-decoration: none;
           letter-spacing: 0.01em; transition: color 0.2s;
+          white-space: nowrap;
         }
         .nav-links a:hover { color: var(--forest); }
-        .nav-cta {
-          font-size: 0.875rem; font-weight: 500;
-          color: var(--cream); background: var(--forest);
-          padding: 0.55rem 1.4rem; border-radius: 100px;
-          text-decoration: none; transition: background 0.25s, transform 0.15s;
+
+        /* Desktop CTA */
+        .nav-cta-wrap { flex-shrink: 0; }
+
+        /* Hamburger button — hidden on desktop */
+        .nav-hamburger {
+          display: none;
+          flex-direction: column; justify-content: center; align-items: center;
+          gap: 5px; width: 40px; height: 40px;
+          background: transparent; border: 1px solid rgba(30,58,47,0.15);
+          border-radius: 10px; cursor: pointer; padding: 0;
+          flex-shrink: 0;
         }
-        .nav-cta:hover { background: var(--forest-mid); transform: translateY(-1px); }
+        .nav-hamburger span {
+          display: block; width: 18px; height: 1.5px;
+          background: var(--forest); border-radius: 2px;
+          transition: all 0.3s ease;
+        }
+        .nav-hamburger.open span:nth-child(1) { transform: translateY(6.5px) rotate(45deg); }
+        .nav-hamburger.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
+        .nav-hamburger.open span:nth-child(3) { transform: translateY(-6.5px) rotate(-45deg); }
+
+        /* Mobile dropdown menu */
+        .nav-mobile-menu {
+          position: fixed; top: 0; left: 0; right: 0;
+          background: rgba(245, 240, 232, 0.98);
+          backdrop-filter: blur(16px);
+          padding: 5rem 2rem 2rem;
+          z-index: 90;
+          transform: translateY(-110%);
+          transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+          border-bottom: 1px solid rgba(139,175,141,0.2);
+          box-shadow: 0 8px 32px rgba(30,58,47,0.08);
+        }
+        .nav-mobile-menu.open { transform: translateY(0); }
+        .nav-mobile-links { list-style: none; display: flex; flex-direction: column; gap: 0; margin-bottom: 1.5rem; }
+        .nav-mobile-links li a {
+          display: block; padding: 1rem 0;
+          font-family: 'Playfair Display', serif;
+          font-size: 1.4rem; font-weight: 700;
+          color: var(--forest); text-decoration: none;
+          border-bottom: 1px solid rgba(30,58,47,0.06);
+          transition: color 0.2s, padding-left 0.2s;
+        }
+        .nav-mobile-links li a:hover { color: var(--amber); padding-left: 4px; }
+        .nav-mobile-cta { margin-top: 0.5rem; }
+
+        /* ── RESPONSIVE BREAKPOINTS ── */
+        @media (max-width: 768px) {
+          .nav { padding: 1rem 1.25rem; }
+          .nav-links { display: none; }
+          .nav-cta-wrap { display: none; }
+          .nav-hamburger { display: flex; }
+        }
+        @media (min-width: 769px) {
+          .nav-mobile-menu { display: none !important; }
+        }
 
         /* ── HERO ── */
         .hero {
@@ -181,7 +244,7 @@ export default function Home() {
           font-size: 1.1rem; font-weight: 300; line-height: 1.7;
           color: var(--text-muted); max-width: 480px; margin-bottom: 2.5rem;
         }
-        .hero-actions { display: flex; align-items: center; gap: 1.25rem; }
+        .hero-actions { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
         .btn-primary {
           display: inline-flex; align-items: center; gap: 0.6rem;
           font-family: 'DM Sans', sans-serif; font-size: 0.95rem; font-weight: 500;
@@ -375,12 +438,10 @@ export default function Home() {
           color: rgba(245, 240, 232, 0.75);
           letter-spacing: 0.01em;
         }
-        /* Last stanza — the resolution — is brighter */
         .poem-stanza:last-child .poem-line {
           color: rgba(245, 240, 232, 0.95);
           font-size: clamp(1.05rem, 2.2vw, 1.25rem);
         }
-        /* The moon stanza — slightly highlighted */
         .poem-stanza.highlighted .poem-line {
           color: rgba(196, 121, 58, 0.9);
         }
@@ -467,6 +528,7 @@ export default function Home() {
         .footer-links a { font-size: 0.8rem; color: rgba(139,175,141,0.5); text-decoration: none; transition: color 0.2s; }
         .footer-links a:hover { color: var(--sage); }
 
+        /* ── MOBILE RESPONSIVE ── */
         @media (max-width: 900px) {
           .hero-inner { grid-template-columns: 1fr; }
           .hero-visual { display: none; }
@@ -475,18 +537,48 @@ export default function Home() {
           .stats-grid { grid-template-columns: 1fr; }
           footer { flex-direction: column; gap: 1rem; text-align: center; }
           .footer-links { justify-content: center; }
-          .nav { padding: 1rem 1.5rem; }
           section { padding: 4rem 1.5rem; }
           .poem-section { padding: 5rem 1.5rem; }
         }
+        @media (max-width: 768px) {
+          .nav { padding: 1rem 1.25rem; }
+          .hero { padding: 6rem 1.25rem 4rem; }
+          .journey-inner-grid { grid-template-columns: 1fr !important; gap: 2rem !important; }
+        }
       `}</style>
 
-      {/* NAV */}
+      {/* ── MOBILE MENU OVERLAY ── */}
+      <div className={`nav-mobile-menu ${mobileMenuOpen ? "open" : ""}`}>
+        <ul className="nav-mobile-links">
+          <li>
+            <a href="#features" onClick={() => setMobileMenuOpen(false)}>
+              Features
+            </a>
+          </li>
+          <li>
+            <a href="#philosophy" onClick={() => setMobileMenuOpen(false)}>
+              Philosophy
+            </a>
+          </li>
+          <li>
+            <a href="#journey" onClick={() => setMobileMenuOpen(false)}>
+              How it works
+            </a>
+          </li>
+        </ul>
+        <div className="nav-mobile-cta">
+          <SmartCTA variant="hero" />
+        </div>
+      </div>
+
+      {/* ── NAV ── */}
       <nav className={`nav ${scrolled ? "scrolled" : ""}`}>
         <a href="#" className="nav-logo">
           <span className="nav-logo-dot" />
           Marathon Mindset
         </a>
+
+        {/* Desktop links */}
         <ul className="nav-links">
           <li>
             <a href="#features">Features</a>
@@ -498,7 +590,22 @@ export default function Home() {
             <a href="#journey">How it works</a>
           </li>
         </ul>
-        <SmartCTA variant="nav" />
+
+        {/* Desktop CTA */}
+        <div className="nav-cta-wrap">
+          <SmartCTA variant="nav" />
+        </div>
+
+        {/* Mobile hamburger */}
+        <button
+          className={`nav-hamburger ${mobileMenuOpen ? "open" : ""}`}
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label="Toggle menu"
+        >
+          <span />
+          <span />
+          <span />
+        </button>
       </nav>
 
       {/* HERO */}
@@ -692,7 +799,6 @@ export default function Home() {
 
           <span className="poem-moon">🌙</span>
 
-          {/* All stanzas */}
           {POEM_STANZAS.map((stanza, si) => (
             <div key={si}>
               <div
@@ -706,8 +812,6 @@ export default function Home() {
                   </span>
                 ))}
               </div>
-
-              {/* Divider between stanzas 2 and 3 (before the turn) */}
               {si === 2 && (
                 <div
                   id="poem-divider"
@@ -741,7 +845,7 @@ export default function Home() {
       {/* JOURNEY */}
       <section id="journey">
         <div
-          className="section-inner"
+          className="section-inner journey-inner-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
