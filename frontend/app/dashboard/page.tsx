@@ -144,7 +144,6 @@ export default function Dashboard() {
     init();
   }, [router]);
 
-  // ── Habit toggle — single source of truth, syncs to tracker ─────────────────
   const handleHabitToggle = async (habit: Habit) => {
     const newCompleted = !habit.completed_today;
     setHabits((prev) =>
@@ -166,7 +165,6 @@ export default function Dashboard() {
     }
   };
 
-  // Called from MonthlyHabitTracker when today's cell is toggled
   const handleTrackerTodayToggle = (habitId: number, completed: boolean) => {
     setHabits((prev) =>
       prev.map((h) =>
@@ -210,7 +208,6 @@ export default function Dashboard() {
     );
   };
 
-  // ── Mode selection ────────────────────────────────────────────────────────────
   const currentMode: AppMode = status?.slow_down_active
     ? "slow-down"
     : status?.one_thing_mode
@@ -233,7 +230,6 @@ export default function Dashboard() {
           : prev,
       );
     } else {
-      // normal — turn everything off
       if (status?.one_thing_mode) {
         await toggleOneThingMode(false).catch(() => {});
       }
@@ -303,7 +299,6 @@ export default function Dashboard() {
   const journalPrompts = level === 1 ? JOURNAL_PROMPTS_L1 : JOURNAL_PROMPTS_L2;
   const todayPrompt = journalPrompts[selectedPromptIndex] ?? journalPrompts[0];
 
-  // ── Goal celebration overlay ──────────────────────────────────────────────────
   if (celebratingGoal) {
     return (
       <GoalCelebration
@@ -313,7 +308,6 @@ export default function Dashboard() {
     );
   }
 
-  // ── Mode selector overlay ─────────────────────────────────────────────────────
   if (showModeSelector && status) {
     return (
       <ModeSelector
@@ -325,7 +319,6 @@ export default function Dashboard() {
     );
   }
 
-  // ── Loading ───────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div
@@ -683,7 +676,6 @@ export default function Dashboard() {
             padding: "0 24px 80px",
           }}
         >
-          {/* Header */}
           <header style={styles.header}>
             <div>
               <h1 style={styles.greeting}>
@@ -728,7 +720,6 @@ export default function Dashboard() {
             levelName={status.level_name}
           />
 
-          {/* Check-in prompt */}
           {status.show_checkin_prompt &&
             !checkinDone &&
             status.checkin_question && (
@@ -761,7 +752,6 @@ export default function Dashboard() {
               </div>
             )}
 
-          {/* Tabs */}
           <div style={styles.tabs}>
             {tabs.map((tab) => (
               <button
@@ -1125,71 +1115,98 @@ export default function Dashboard() {
                   day streak
                 </p>
               </div>
+
+              {/* 7-day grid */}
               <div
                 style={{
                   display: "flex",
                   gap: "8px",
                   justifyContent: "center",
-                  marginBottom: "40px",
+                  marginBottom: "32px",
                 }}
               >
-                {streakData.last_7_days.map((day, i) => (
-                  <div key={i} style={{ textAlign: "center" }}>
-                    <div
-                      style={{
-                        width: "36px",
-                        height: "36px",
-                        borderRadius: "10px",
-                        background: day.completed
-                          ? "var(--sage, #8BAF8D)"
-                          : day.rest_day
-                            ? "rgba(196,121,58,0.2)"
-                            : "rgba(30,58,47,0.06)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        marginBottom: "4px",
-                        border: day.bad_day
-                          ? "1px solid rgba(30,58,47,0.1)"
-                          : "none",
-                      }}
-                    >
-                      {day.completed && (
-                        <svg
-                          width="14"
-                          height="11"
-                          viewBox="0 0 14 11"
-                          fill="none"
-                        >
-                          <path
-                            d="M1 5L5 9L13 1"
-                            stroke="white"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      )}
-                      {day.rest_day && !day.completed && (
-                        <span style={{ fontSize: "12px" }}>🌙</span>
-                      )}
-                      {day.bad_day && !day.completed && !day.rest_day && (
-                        <span style={{ fontSize: "12px" }}>🌱</span>
-                      )}
+                {streakData.last_7_days.map((day, i) => {
+                  // Determine cell state
+                  const isCompleted = day.completed;
+                  const isRestDay = day.rest_day && !day.completed; // explicit rest (bad day button)
+                  const isSkipped = !day.completed && !day.rest_day; // silent skip
+
+                  let bgColor = "rgba(30,58,47,0.06)"; // default: skipped/future
+                  let content = null;
+
+                  if (isCompleted) {
+                    bgColor = "var(--sage, #8BAF8D)";
+                    content = (
+                      <svg
+                        width="14"
+                        height="11"
+                        viewBox="0 0 14 11"
+                        fill="none"
+                      >
+                        <path
+                          d="M1 5L5 9L13 1"
+                          stroke="white"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    );
+                  } else if (isRestDay) {
+                    bgColor = "rgba(196,121,58,0.15)";
+                    content = <span style={{ fontSize: "12px" }}>🌙</span>;
+                  } else if (isSkipped) {
+                    // silent skip — show subtle × or just empty grey
+                    bgColor = "rgba(30,58,47,0.04)";
+                    content = (
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          color: "rgba(30,58,47,0.2)",
+                          lineHeight: 1,
+                        }}
+                      >
+                        ·
+                      </span>
+                    );
+                  }
+
+                  return (
+                    <div key={i} style={{ textAlign: "center" }}>
+                      <div
+                        style={{
+                          width: "36px",
+                          height: "36px",
+                          borderRadius: "10px",
+                          background: bgColor,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginBottom: "4px",
+                          border: isSkipped
+                            ? "1px dashed rgba(30,58,47,0.1)"
+                            : "none",
+                          transition: "all 0.2s ease",
+                        }}
+                      >
+                        {content}
+                      </div>
+                      <p
+                        style={{
+                          fontSize: "10px",
+                          color: "rgba(30,58,47,0.35)",
+                          fontFamily: "DM Sans, sans-serif",
+                          margin: 0,
+                        }}
+                      >
+                        {day.day_name}
+                      </p>
                     </div>
-                    <p
-                      style={{
-                        fontSize: "10px",
-                        color: "rgba(30,58,47,0.35)",
-                        fontFamily: "DM Sans, sans-serif",
-                        margin: 0,
-                      }}
-                    >
-                      {day.day_name}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+
+              {/* Legend */}
               <div
                 style={{
                   display: "flex",
@@ -1200,9 +1217,24 @@ export default function Dashboard() {
                 }}
               >
                 {[
-                  { color: "var(--sage, #8BAF8D)", label: "Completed" },
-                  { color: "rgba(196,121,58,0.3)", label: "Rest day" },
-                  { color: "rgba(30,58,47,0.06)", label: "Hard day" },
+                  {
+                    color: "var(--sage, #8BAF8D)",
+                    label: "Completed",
+                    border: "none",
+                    dashed: false,
+                  },
+                  {
+                    color: "rgba(196,121,58,0.15)",
+                    label: "Rest day",
+                    border: "none",
+                    dashed: false,
+                  },
+                  {
+                    color: "rgba(30,58,47,0.04)",
+                    label: "Stepped away",
+                    border: "1px dashed rgba(30,58,47,0.1)",
+                    dashed: true,
+                  },
                 ].map((item) => (
                   <div
                     key={item.label}
@@ -1218,6 +1250,7 @@ export default function Dashboard() {
                         height: "10px",
                         borderRadius: "3px",
                         background: item.color,
+                        border: item.border,
                       }}
                     />
                     <span
@@ -1232,6 +1265,8 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
+
+              {/* Streak philosophy note */}
               <div
                 style={{
                   background: "rgba(196,121,58,0.07)",
@@ -1250,12 +1285,14 @@ export default function Dashboard() {
                   }}
                 >
                   <strong style={{ color: "var(--forest, #1E3A2F)" }}>
-                    Rest days don't break your streak.
+                    Rest days protect your streak
                   </strong>{" "}
-                  One missed day per week is automatically protected. Because
-                  real life happens, and that's okay.
+                  — but only when you ask for them. Press{" "}
+                  <em>"Today was hard."</em> on any day you genuinely need
+                  grace. Showing up the next day is what the streak is for.
                 </p>
               </div>
+
               <p style={{ ...styles.poemLine, marginTop: "8px" }}>
                 "When even stars will dim and rest, why must I always be my
                 best?"
@@ -1352,7 +1389,6 @@ function DashboardNav({
       </a>
 
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        {/* Mode pill */}
         <button
           onClick={onModeClick}
           style={{
@@ -1375,7 +1411,6 @@ function DashboardNav({
           <span style={{ fontSize: "9px", opacity: 0.5 }}>▾</span>
         </button>
 
-        {/* User menu */}
         <div style={{ position: "relative" }}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}

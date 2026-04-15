@@ -375,6 +375,7 @@ export interface StreakDetail {
     completed: boolean;
     rest_day: boolean;
     bad_day: boolean;
+    skipped: boolean; // NEW: true when silently skipped (no habit, no bad day declared)
     day_name: string;
   }>;
 }

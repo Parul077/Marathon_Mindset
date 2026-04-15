@@ -13,7 +13,7 @@ from rest_framework.authtoken.models import Token
 from .models import (
     CustomUser, OnboardingAnswer, Habit, HabitLog, RestDay,
     BadDayLog, DailyJournal, SmallWin, AnonymousWin,
-    MilestoneLog, Goal, Book, WeeklyGrowthLetter,DailyInvitationLog
+    MilestoneLog, Goal, Book, WeeklyGrowthLetter, DailyInvitationLog
 )
 from .serializers import RegisterSerializer
 
@@ -254,16 +254,31 @@ def reset_level(request):
 # ─── STREAK ──────────────────────────────────────────────────────────────────
 
 def calculate_streak(user):
+    """
+    Streak calculation — honest accountability with explicit grace.
+
+    Rules:
+    - A day counts if the user completed at least one habit.
+    - A day counts if the user explicitly pressed "Today was hard" (BadDayLog exists),
+      which creates a RestDay record.
+    - A silently skipped day (no habit log, no BadDayLog) BREAKS the streak.
+    - We do NOT auto-apply rest days for silent skips anymore.
+
+    This preserves the platform's philosophy:
+    "Grow at your own pace" means you choose when to rest — not that every
+    missed day is automatically forgiven. The streak should feel earned.
+    """
     habits = Habit.objects.filter(user=user, is_active=True)
     if not habits.exists():
         return 0
 
     today = date.today()
     streak = 0
-    rest_days_used_this_week = {}
 
     for i in range(365):
         check_date = today - timedelta(days=i)
+
+        # Did the user complete any habit on this day?
         completed = HabitLog.objects.filter(
             habit__in=habits, date=check_date, completed=True
         ).exists()
@@ -272,30 +287,18 @@ def calculate_streak(user):
             streak += 1
             continue
 
-        iso = check_date.isocalendar()
-        week_key = f"{iso[0]}-{iso[1]}"
+        # Was this an explicitly declared rest day (via "Today was hard" button)?
+        # RestDay records are ONLY created by log_bad_day() — never auto-applied.
+        explicit_rest = RestDay.objects.filter(user=user, date=check_date).exists()
 
-        rest_day_exists = RestDay.objects.filter(user=user, date=check_date).exists()
-        if rest_day_exists:
+        if explicit_rest:
             streak += 1
             continue
 
-        rest_used = rest_days_used_this_week.get(week_key, False)
-        if not rest_used and i > 0:
-            week_rest_used = RestDay.objects.filter(
-                user=user, week_year=iso[0], week_number=iso[1]
-            ).exists()
-            if not week_rest_used:
-                RestDay.objects.get_or_create(
-                    user=user, date=check_date,
-                    defaults={'week_year': iso[0], 'week_number': iso[1], 'auto_applied': True}
-                )
-                rest_days_used_this_week[week_key] = True
-                streak += 1
-                continue
-
+        # Silent skip — streak ends here
         break
 
+    # Check for milestone unlocks
     milestone_days = [7, 21, 50, 100, 365]
     for m in milestone_days:
         if streak >= m:
@@ -453,6 +456,13 @@ def habit_logs(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def log_bad_day(request):
+    """
+    The ONLY place where a RestDay is created.
+    When a user presses "Today was hard.", we:
+    1. Log the bad day
+    2. Create a RestDay for today (explicit grace — user asked for it)
+    3. Activate Slow Down Mode for 24h
+    """
     today = date.today()
     private_note = request.data.get('note', '')
     bad_day, created = BadDayLog.objects.get_or_create(
@@ -462,24 +472,22 @@ def log_bad_day(request):
         bad_day.private_note = private_note
         bad_day.save()
 
-    today_iso = today.isocalendar()
-    week_rest_used = RestDay.objects.filter(
-        user=request.user, week_year=today_iso[0], week_number=today_iso[1]
-    ).exists()
-
-    rest_day_applied = False
-    if not week_rest_used:
-        RestDay.objects.get_or_create(
-            user=request.user, date=today,
-            defaults={'week_year': today_iso[0], 'week_number': today_iso[1], 'auto_applied': True}
-        )
-        rest_day_applied = True
+    # Always ensure a RestDay exists for today when user explicitly asks for grace
+    RestDay.objects.get_or_create(
+        user=request.user,
+        date=today,
+        defaults={
+            'week_year': today.isocalendar()[0],
+            'week_number': today.isocalendar()[1],
+            'auto_applied': False  # explicitly requested by user
+        }
+    )
 
     streak = calculate_streak(request.user)
     return Response({
         'status': 'logged',
         'slow_down_until': bad_day.slow_down_until,
-        'rest_day_applied': rest_day_applied,
+        'rest_day_applied': True,
         'streak': streak,
         'message': "That took courage to say. Rest is part of the journey."
     })
@@ -609,29 +617,18 @@ SEED_WINS = [
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def community_wins(request):
-    """
-    Returns ~15 random anonymous wins for the community wall.
-    Falls back to seed wins if not enough real ones exist.
-    Query param: ?count=15
-    """
     count = min(int(request.query_params.get('count', 15)), 30)
-
     real_wins = list(
         AnonymousWin.objects.filter(is_active=True, flagged=False)
         .values_list('win_text', flat=True)
     )
-
     if len(real_wins) >= count:
         selected = random.sample(real_wins, count)
     else:
-        # Pad with seed wins to reach count, avoiding duplicates with real wins
         available_seeds = [s for s in SEED_WINS if s not in real_wins]
         combined = real_wins + available_seeds
         selected = random.sample(combined, min(count, len(combined)))
-
-    # Shuffle so real and seed wins are mixed
     random.shuffle(selected)
-
     return Response({'wins': selected, 'total': len(selected)})
 
 
@@ -770,6 +767,13 @@ def generate_growth_letter(name, habits, journals, wins, streak, week_start):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def streak_detail(request):
+    """
+    Returns the last 7 days with honest status for each day:
+    - completed: user logged a habit
+    - rest_day: user explicitly pressed "Today was hard" (BadDayLog + RestDay exists)
+    - bad_day: same as rest_day (alias for frontend display)
+    - skipped: no habit logged, no rest day declared — silent skip
+    """
     streak = calculate_streak(request.user)
     today = date.today()
     habits = Habit.objects.filter(user=request.user, is_active=True)
@@ -777,11 +781,24 @@ def streak_detail(request):
     for i in range(6, -1, -1):
         d = today - timedelta(days=i)
         completed = HabitLog.objects.filter(habit__in=habits, date=d, completed=True).exists()
+        # Only count explicit rest days (from "Today was hard" button)
         is_rest = RestDay.objects.filter(user=request.user, date=d).exists()
         is_bad_day = BadDayLog.objects.filter(user=request.user, date=d).exists()
+        # A day is a silent skip if: not completed, not an explicit rest/bad day,
+        # and it's in the past (not today)
+        is_silent_skip = (
+            not completed
+            and not is_rest
+            and not is_bad_day
+            and d < today
+        )
         last_7.append({
-            'date': str(d), 'completed': completed, 'rest_day': is_rest,
-            'bad_day': is_bad_day, 'day_name': d.strftime('%a'),
+            'date': str(d),
+            'completed': completed,
+            'rest_day': is_rest,
+            'bad_day': is_bad_day,
+            'skipped': is_silent_skip,
+            'day_name': d.strftime('%a'),
         })
     return Response({
         'streak': streak,
@@ -790,8 +807,7 @@ def streak_detail(request):
     })
 
 
-# Daily Invitation section
-
+# ─── Daily Invitation ────────────────────────────────────────────────────────
 
 DAILY_INVITATIONS = [
     # ── Slow moments ──────────────────────────────────────────────────────────
@@ -805,7 +821,7 @@ DAILY_INVITATIONS = [
     "Put your phone face down for the next hour.",
     "Watch the sky for two minutes — morning, noon, or night.",
     "Move from one room to another with no purpose. Just wander.",
- 
+
     # ── Return to yourself ────────────────────────────────────────────────────
     "Write one sentence about how you actually feel today.",
     "Ask yourself: what do I need right now that I haven't given myself?",
@@ -817,7 +833,7 @@ DAILY_INVITATIONS = [
     "Recall a time you got through something hard. You did it then too.",
     "Write down one thing you're grateful for that you never say out loud.",
     "Notice how your body feels right now. No judgment — just notice.",
- 
+
     # ── Tiny courage ──────────────────────────────────────────────────────────
     "Say no to one small thing today that you'd normally say yes to.",
     "Take a break without apologising for it.",
@@ -829,7 +845,7 @@ DAILY_INVITATIONS = [
     "Admit to yourself one thing that isn't working. Just notice it.",
     "Do one thing at half your usual speed.",
     "Let something be imperfect today and leave it that way.",
- 
+
     # ── Unexpected kindness ───────────────────────────────────────────────────
     "Write one sentence you needed to hear. Keep it for yourself.",
     "Be kind to yourself in one small way today — whatever that means to you.",
@@ -841,7 +857,7 @@ DAILY_INVITATIONS = [
     "Do one thing that your body is asking for — rest, movement, food, quiet.",
     "Write down one quality you like about yourself. No disclaimers.",
     "Let today be enough, even if it didn't look like what you planned.",
- 
+
     # ── Small connections ─────────────────────────────────────────────────────
     "Make eye contact and smile at one person today.",
     "Really listen to someone today — without planning your response.",
@@ -853,7 +869,7 @@ DAILY_INVITATIONS = [
     "Put your full attention on the next conversation you have.",
     "Tell someone what you appreciate about them.",
     "Reach out to someone you haven't spoken to in a while.",
- 
+
     # ── Gentle exploration ────────────────────────────────────────────────────
     "Try something slightly different from your usual routine today.",
     "Read one page of something you wouldn't normally read.",
@@ -866,21 +882,15 @@ DAILY_INVITATIONS = [
     "Watch something in nature — clouds, trees, water, birds — for a few minutes.",
     "Do one thing today that your younger self would have enjoyed.",
 ]
- 
- 
+
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def daily_invitation(request):
-    """
-    GET  — Returns today's invitation and whether the user has tried it.
-    POST — Logs that the user tried today's invitation. Private, no streak.
-    """
     today = date.today()
-    # Cycle through invitations by day of year — same invitation for everyone
-    # on the same day, cycling every 60 days
     day_index = today.timetuple().tm_yday % len(DAILY_INVITATIONS)
     invitation_text = DAILY_INVITATIONS[day_index]
- 
+
     if request.method == 'GET':
         already_tried = DailyInvitationLog.objects.filter(
             user=request.user, date=today
@@ -890,9 +900,8 @@ def daily_invitation(request):
             'tried_today': already_tried,
             'date': str(today),
         })
- 
+
     elif request.method == 'POST':
-        # Idempotent — trying twice on the same day is fine, just one log
         _, created = DailyInvitationLog.objects.get_or_create(
             user=request.user,
             date=today,
@@ -903,4 +912,3 @@ def daily_invitation(request):
             'created': created,
             'invitation': invitation_text,
         })
- 
