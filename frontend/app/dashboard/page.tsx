@@ -76,13 +76,381 @@ const CHECKIN_QUESTIONS: Record<string, string> = {
   challenge: "What's been the hardest part of your routine recently?",
 };
 
+// ─── Journal Section Component ────────────────────────────────────────────────
+function JournalSection({
+  level,
+  initialEntry,
+  selectedPromptIndex,
+  setSelectedPromptIndex,
+  journalPrompts,
+  todayPrompt,
+}: {
+  level: number;
+  initialEntry: string;
+  selectedPromptIndex: number;
+  setSelectedPromptIndex: (i: number) => void;
+  journalPrompts: string[];
+  todayPrompt: string;
+}) {
+  const [entry, setEntry] = useState(initialEntry);
+  const [savedEntry, setSavedEntry] = useState(initialEntry); // what's confirmed saved
+  const [isSaved, setIsSaved] = useState(!!initialEntry); // show card if loaded with data
+  const [isEditing, setIsEditing] = useState(!initialEntry); // start in edit mode if no entry
+  const [saving, setSaving] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // When initial data loads from parent, sync it
+  useEffect(() => {
+    setEntry(initialEntry);
+    setSavedEntry(initialEntry);
+    setIsSaved(!!initialEntry);
+    setIsEditing(!initialEntry);
+  }, [initialEntry]);
+
+  // Focus textarea when editing starts
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      setTimeout(() => textareaRef.current?.focus(), 100);
+    }
+  }, [isEditing]);
+
+  const handleSave = async () => {
+    if (!entry.trim() || saving) return;
+    setSaving(true);
+    try {
+      await saveJournal(entry.trim());
+      setSavedEntry(entry.trim());
+      setIsSaved(true);
+      setIsEditing(false);
+    } catch {
+      // Silent fail — don't lose the text
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEdit = () => {
+    setIsEditing(true);
+    setEntry(savedEntry);
+  };
+
+  const today = new Date();
+  const formattedDate = today.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+
+  return (
+    <div>
+      {/* Prompt selector for Level 2+ */}
+      {level >= 2 && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
+            marginBottom: "16px",
+          }}
+        >
+          {JOURNAL_PROMPTS_L2.map((prompt, i) => (
+            <button
+              key={i}
+              onClick={() => {
+                setSelectedPromptIndex(i);
+                // If already saved, switch to edit mode when changing prompt
+                if (isSaved && !isEditing) setIsEditing(true);
+              }}
+              style={{
+                textAlign: "left",
+                background:
+                  selectedPromptIndex === i
+                    ? "rgba(30,58,47,0.06)"
+                    : "transparent",
+                border: `1px solid ${selectedPromptIndex === i ? "rgba(30,58,47,0.2)" : "rgba(30,58,47,0.08)"}`,
+                borderRadius: "10px",
+                padding: "11px 14px",
+                cursor: "pointer",
+                fontFamily: "Playfair Display, serif",
+                fontStyle: "italic",
+                fontSize: "14px",
+                color:
+                  selectedPromptIndex === i
+                    ? "var(--forest, #1E3A2F)"
+                    : "rgba(30,58,47,0.4)",
+                transition: "all 0.2s ease",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+              }}
+            >
+              <div
+                style={{
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  flexShrink: 0,
+                  background:
+                    selectedPromptIndex === i
+                      ? "var(--amber, #C4793A)"
+                      : "rgba(30,58,47,0.15)",
+                  transition: "background 0.2s",
+                }}
+              />
+              {prompt}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Level 1 prompt label */}
+      {level === 1 && (
+        <p
+          style={{
+            fontSize: "15px",
+            fontFamily: "Playfair Display, serif",
+            fontStyle: "italic",
+            color: "var(--forest, #1E3A2F)",
+            marginBottom: "12px",
+            lineHeight: 1.5,
+          }}
+        >
+          {todayPrompt}
+        </p>
+      )}
+
+      {/* Input mode */}
+      {isEditing && (
+        <div>
+          <textarea
+            ref={textareaRef}
+            value={entry}
+            onChange={(e) => setEntry(e.target.value)}
+            placeholder="Write what's true for you today..."
+            rows={level === 1 ? 4 : 5}
+            style={{
+              width: "100%",
+              background: "rgba(30,58,47,0.03)",
+              border: "1px solid rgba(30,58,47,0.08)",
+              borderRadius: "10px",
+              padding: "13px 14px",
+              fontSize: "14px",
+              fontFamily: "DM Sans, sans-serif",
+              color: "var(--forest, #1E3A2F)",
+              resize: "none",
+              outline: "none",
+              lineHeight: 1.6,
+              boxSizing: "border-box",
+              transition: "border-color 0.2s",
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSave();
+            }}
+          />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              marginTop: "10px",
+            }}
+          >
+            {entry.trim() && (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                style={{
+                  background: saving
+                    ? "rgba(30,58,47,0.4)"
+                    : "var(--forest, #1E3A2F)",
+                  color: "var(--cream, #F5F0E8)",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "9px 18px",
+                  fontSize: "13px",
+                  fontFamily: "DM Sans, sans-serif",
+                  cursor: saving ? "default" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  transition: "background 0.2s",
+                }}
+              >
+                {saving ? (
+                  <>
+                    <span
+                      style={{
+                        width: "11px",
+                        height: "11px",
+                        borderRadius: "50%",
+                        border: "1.5px solid rgba(245,240,232,0.3)",
+                        borderTopColor: "var(--cream, #F5F0E8)",
+                        animation: "spin 0.7s linear infinite",
+                        display: "inline-block",
+                        flexShrink: 0,
+                      }}
+                    />
+                    Saving…
+                  </>
+                ) : (
+                  "Save"
+                )}
+              </button>
+            )}
+            {isSaved && (
+              <button
+                onClick={() => {
+                  setIsEditing(false);
+                  setEntry(savedEntry);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "rgba(30,58,47,0.35)",
+                  fontSize: "13px",
+                  fontFamily: "DM Sans, sans-serif",
+                  cursor: "pointer",
+                  padding: "9px 0",
+                }}
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+          <p
+            style={{
+              fontSize: "11px",
+              color: "rgba(30,58,47,0.25)",
+              fontFamily: "DM Sans, sans-serif",
+              marginTop: "6px",
+            }}
+          >
+            ⌘ + Enter to save
+          </p>
+        </div>
+      )}
+
+      {/* Saved card — shown after saving */}
+      {isSaved && !isEditing && savedEntry && (
+        <div
+          style={{
+            background: "rgba(139,175,141,0.07)",
+            border: "1px solid rgba(139,175,141,0.2)",
+            borderRadius: "12px",
+            padding: "18px 20px",
+            animation: "fadeUp 0.4s ease both",
+            position: "relative",
+          }}
+        >
+          {/* Top row */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: "12px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              {/* Green dot */}
+              <div
+                style={{
+                  width: "7px",
+                  height: "7px",
+                  borderRadius: "50%",
+                  background: "var(--sage, #8BAF8D)",
+                  flexShrink: 0,
+                }}
+              />
+              <span
+                style={{
+                  fontSize: "11px",
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  color: "var(--sage, #8BAF8D)",
+                  fontFamily: "DM Sans, sans-serif",
+                  fontWeight: 500,
+                }}
+              >
+                Saved today
+              </span>
+            </div>
+            <span
+              style={{
+                fontSize: "11px",
+                color: "rgba(30,58,47,0.3)",
+                fontFamily: "DM Sans, sans-serif",
+              }}
+            >
+              {formattedDate}
+            </span>
+          </div>
+
+          {/* The actual journal text */}
+          <p
+            style={{
+              fontFamily: "Playfair Display, serif",
+              fontSize: "15px",
+              lineHeight: 1.8,
+              color: "var(--forest, #1E3A2F)",
+              margin: "0 0 16px",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+            }}
+          >
+            {savedEntry}
+          </p>
+
+          {/* Edit button */}
+          <button
+            onClick={handleEdit}
+            style={{
+              background: "transparent",
+              border: "1px solid rgba(30,58,47,0.12)",
+              borderRadius: "8px",
+              padding: "7px 14px",
+              fontSize: "12px",
+              fontFamily: "DM Sans, sans-serif",
+              color: "rgba(30,58,47,0.45)",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              transition: "all 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(30,58,47,0.04)";
+              e.currentTarget.style.borderColor = "rgba(30,58,47,0.2)";
+              e.currentTarget.style.color = "var(--forest, #1E3A2F)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.borderColor = "rgba(30,58,47,0.12)";
+              e.currentTarget.style.color = "rgba(30,58,47,0.45)";
+            }}
+          >
+            ✎ Edit
+          </button>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const router = useRouter();
 
   const [status, setStatus] = useState<UserStatus | null>(null);
   const [habits, setHabits] = useState<Habit[]>([]);
-  const [journalEntry, setJournalEntry] = useState("");
-  const [journalSaved, setJournalSaved] = useState(false);
+  const [journalEntry, setJournalEntry] = useState(""); // raw loaded entry
   const [wins, setWins] = useState<Win[]>([]);
   const [newWin, setNewWin] = useState("");
   const [streakData, setStreakData] = useState<StreakDetail | null>(null);
@@ -99,6 +467,10 @@ export default function Dashboard() {
   const [loadingPoem, setLoadingPoem] = useState(POEM_LOADING[0]);
   const [celebratingGoal, setCelebratingGoal] = useState<string | null>(null);
   const [showModeSelector, setShowModeSelector] = useState(false);
+
+  // One-thing mode local journal state (separate from main journal)
+  const [oneThingJournal, setOneThingJournal] = useState("");
+  const [oneThingJournalSaved, setOneThingJournalSaved] = useState(false);
 
   useEffect(() => {
     let i = 0;
@@ -171,13 +543,6 @@ export default function Dashboard() {
         h.id === habitId ? { ...h, completed_today: completed } : h,
       ),
     );
-  };
-
-  const handleJournalSave = async () => {
-    if (!journalEntry.trim()) return;
-    await saveJournal(journalEntry).catch(() => {});
-    setJournalSaved(true);
-    setTimeout(() => setJournalSaved(false), 3000);
   };
 
   const handleLogWin = async () => {
@@ -429,16 +794,15 @@ export default function Dashboard() {
                 02 — <span style={styles.oneSectionLbl}>One question</span>
               </p>
               <p style={styles.journalPromptText}>{todayPrompt}</p>
-              <textarea
-                value={journalEntry}
-                onChange={(e) => setJournalEntry(e.target.value)}
-                placeholder="A few words is enough..."
-                rows={3}
-                style={styles.textarea}
+              {/* One-thing mode uses the same JournalSection */}
+              <JournalSection
+                level={1}
+                initialEntry={journalEntry}
+                selectedPromptIndex={selectedPromptIndex}
+                setSelectedPromptIndex={setSelectedPromptIndex}
+                journalPrompts={JOURNAL_PROMPTS_L1}
+                todayPrompt={todayPrompt}
               />
-              {journalEntry.trim() && (
-                <SaveButton onClick={handleJournalSave} saved={journalSaved} />
-              )}
             </div>
             <div style={styles.oneSectionWrap}>
               <p style={styles.oneSectionNum}>
@@ -455,7 +819,10 @@ export default function Dashboard() {
                 }}
               />
               {newWin.trim() && (
-                <button onClick={handleLogWin} style={styles.saveBtnSmall}>
+                <button
+                  onClick={handleLogWin}
+                  style={{ ...styles.saveBtnSmall, marginTop: "10px" }}
+                >
                   Log it
                 </button>
               )}
@@ -614,8 +981,8 @@ export default function Dashboard() {
               Is there anything you want to write down?
             </p>
             <textarea
-              value={journalEntry}
-              onChange={(e) => setJournalEntry(e.target.value)}
+              value={oneThingJournal}
+              onChange={(e) => setOneThingJournal(e.target.value)}
               placeholder="No pressure. Just if you want to..."
               rows={4}
               style={{
@@ -626,9 +993,13 @@ export default function Dashboard() {
                 width: "100%",
               }}
             />
-            {journalEntry.trim() && (
+            {oneThingJournal.trim() && (
               <button
-                onClick={handleJournalSave}
+                onClick={async () => {
+                  await saveJournal(oneThingJournal).catch(() => {});
+                  setOneThingJournalSaved(true);
+                  setTimeout(() => setOneThingJournalSaved(false), 3000);
+                }}
                 style={{
                   ...styles.saveBtnSmall,
                   marginTop: "10px",
@@ -637,7 +1008,7 @@ export default function Dashboard() {
                   border: "1px solid rgba(245,240,232,0.15)",
                 }}
               >
-                {journalSaved ? "Saved ✓" : "Save quietly"}
+                {oneThingJournalSaved ? "Saved ✓" : "Save quietly"}
               </button>
             )}
           </div>
@@ -830,98 +1201,16 @@ export default function Dashboard() {
                 )}
               </Section>
 
+              {/* ── JOURNAL with saved card ── */}
               <Section title={level === 1 ? "Today's question" : "Journal"}>
-                {level >= 2 && (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "8px",
-                      marginBottom: "16px",
-                    }}
-                  >
-                    {JOURNAL_PROMPTS_L2.map((prompt, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setSelectedPromptIndex(i)}
-                        style={{
-                          textAlign: "left",
-                          background:
-                            selectedPromptIndex === i
-                              ? "rgba(30,58,47,0.06)"
-                              : "transparent",
-                          border: `1px solid ${selectedPromptIndex === i ? "rgba(30,58,47,0.2)" : "rgba(30,58,47,0.08)"}`,
-                          borderRadius: "10px",
-                          padding: "11px 14px",
-                          cursor: "pointer",
-                          fontFamily: "Playfair Display, serif",
-                          fontStyle: "italic",
-                          fontSize: "14px",
-                          color:
-                            selectedPromptIndex === i
-                              ? "var(--forest, #1E3A2F)"
-                              : "rgba(30,58,47,0.4)",
-                          transition: "all 0.2s ease",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "10px",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: "6px",
-                            height: "6px",
-                            borderRadius: "50%",
-                            flexShrink: 0,
-                            background:
-                              selectedPromptIndex === i
-                                ? "var(--amber, #C4793A)"
-                                : "rgba(30,58,47,0.15)",
-                            transition: "background 0.2s",
-                          }}
-                        />
-                        {prompt}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {level === 1 && (
-                  <p style={styles.journalPromptText}>{todayPrompt}</p>
-                )}
-                <textarea
-                  value={journalEntry}
-                  onChange={(e) => setJournalEntry(e.target.value)}
-                  placeholder="Write what's true for you today..."
-                  rows={level === 1 ? 4 : 5}
-                  style={styles.textarea}
-                  onBlur={handleJournalSave}
+                <JournalSection
+                  level={level}
+                  initialEntry={journalEntry}
+                  selectedPromptIndex={selectedPromptIndex}
+                  setSelectedPromptIndex={setSelectedPromptIndex}
+                  journalPrompts={journalPrompts}
+                  todayPrompt={todayPrompt}
                 />
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginTop: "8px",
-                  }}
-                >
-                  {journalEntry.trim() && (
-                    <SaveButton
-                      onClick={handleJournalSave}
-                      saved={journalSaved}
-                    />
-                  )}
-                  {journalSaved && (
-                    <span
-                      style={{
-                        fontSize: "12px",
-                        color: "var(--sage, #8BAF8D)",
-                        fontFamily: "DM Sans, sans-serif",
-                      }}
-                    >
-                      Saved ✓
-                    </span>
-                  )}
-                </div>
               </Section>
 
               <DailyInvitation />
@@ -1115,23 +1404,20 @@ export default function Dashboard() {
                   day streak
                 </p>
               </div>
-
-              {/* 7-day grid */}
               <div
                 style={{
                   display: "flex",
                   gap: "8px",
                   justifyContent: "center",
-                  marginBottom: "32px",
+                  marginBottom: "40px",
                 }}
               >
                 {streakData.last_7_days.map((day, i) => {
-                  // Determine cell state
                   const isCompleted = day.completed;
-                  const isRestDay = day.rest_day && !day.completed; // explicit rest (bad day button)
-                  const isSkipped = !day.completed && !day.rest_day; // silent skip
+                  const isRestDay = day.rest_day && !day.completed;
+                  const isSkipped = !day.completed && !day.rest_day;
 
-                  let bgColor = "rgba(30,58,47,0.06)"; // default: skipped/future
+                  let bgColor = "rgba(30,58,47,0.06)";
                   let content = null;
 
                   if (isCompleted) {
@@ -1156,7 +1442,6 @@ export default function Dashboard() {
                     bgColor = "rgba(196,121,58,0.15)";
                     content = <span style={{ fontSize: "12px" }}>🌙</span>;
                   } else if (isSkipped) {
-                    // silent skip — show subtle × or just empty grey
                     bgColor = "rgba(30,58,47,0.04)";
                     content = (
                       <span
@@ -1205,8 +1490,6 @@ export default function Dashboard() {
                   );
                 })}
               </div>
-
-              {/* Legend */}
               <div
                 style={{
                   display: "flex",
@@ -1221,19 +1504,16 @@ export default function Dashboard() {
                     color: "var(--sage, #8BAF8D)",
                     label: "Completed",
                     border: "none",
-                    dashed: false,
                   },
                   {
                     color: "rgba(196,121,58,0.15)",
                     label: "Rest day",
                     border: "none",
-                    dashed: false,
                   },
                   {
                     color: "rgba(30,58,47,0.04)",
                     label: "Stepped away",
                     border: "1px dashed rgba(30,58,47,0.1)",
-                    dashed: true,
                   },
                 ].map((item) => (
                   <div
@@ -1265,8 +1545,6 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
-
-              {/* Streak philosophy note */}
               <div
                 style={{
                   background: "rgba(196,121,58,0.07)",
@@ -1292,7 +1570,6 @@ export default function Dashboard() {
                   grace. Showing up the next day is what the streak is for.
                 </p>
               </div>
-
               <p style={{ ...styles.poemLine, marginTop: "8px" }}>
                 "When even stars will dim and rest, why must I always be my
                 best?"
@@ -1318,7 +1595,6 @@ export default function Dashboard() {
 }
 
 // ─── Dashboard Nav ────────────────────────────────────────────────────────────
-
 function DashboardNav({
   name,
   onLogout,
@@ -1338,7 +1614,6 @@ function DashboardNav({
   const fg = dark ? "rgba(245,240,232,0.8)" : "var(--forest, #1E3A2F)";
   const border = dark ? "rgba(245,240,232,0.12)" : "rgba(30,58,47,0.1)";
   const bg = dark ? "var(--forest, #1E3A2F)" : "var(--cream, #F5F0E8)";
-
   const MODE_LABELS: Record<AppMode, string> = {
     normal: "Full Dashboard",
     "one-thing": "One Thing Mode",
@@ -1387,7 +1662,6 @@ function DashboardNav({
         />
         Marathon Mindset
       </a>
-
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <button
           onClick={onModeClick}
@@ -1403,14 +1677,12 @@ function DashboardNav({
             fontFamily: "DM Sans, sans-serif",
             color: dark ? "rgba(245,240,232,0.55)" : "rgba(30,58,47,0.5)",
             cursor: "pointer",
-            transition: "all 0.2s",
           }}
         >
           <span style={{ fontSize: "13px" }}>{MODE_ICONS[currentMode]}</span>
           <span>{MODE_LABELS[currentMode]}</span>
           <span style={{ fontSize: "9px", opacity: 0.5 }}>▾</span>
         </button>
-
         <div style={{ position: "relative" }}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
@@ -1448,7 +1720,6 @@ function DashboardNav({
             {name.split(" ")[0]}
             <span style={{ fontSize: "10px", opacity: 0.5 }}>▾</span>
           </button>
-
           {menuOpen && (
             <div
               style={{
@@ -1565,7 +1836,6 @@ const menuItemStyle: React.CSSProperties = {
 };
 
 // ─── Goals Tab ────────────────────────────────────────────────────────────────
-
 function GoalsTab({
   goals,
   onGoalComplete,
@@ -1628,7 +1898,6 @@ function GoalsTab({
           Goals are intentions, not obligations. Set them with kindness.
         </p>
       </div>
-
       {activeGoals.length > 0 && (
         <div style={{ marginBottom: "32px" }}>
           <p style={styles.sectionTitle}>In progress</p>
@@ -1646,7 +1915,6 @@ function GoalsTab({
           </div>
         </div>
       )}
-
       {!addingGoal ? (
         <button
           onClick={() => setAddingGoal(true)}
@@ -1808,7 +2076,6 @@ function GoalsTab({
           </div>
         </div>
       )}
-
       {completedGoals.length > 0 && (
         <div>
           <p style={styles.sectionTitle}>Completed</p>
@@ -2026,7 +2293,6 @@ function GoalCard({
 }
 
 // ─── AddHabitInline ───────────────────────────────────────────────────────────
-
 function AddHabitInline({
   showProminent,
   level,
@@ -2276,7 +2542,6 @@ function AddHabitInline({
 }
 
 // ─── Shared sub-components ────────────────────────────────────────────────────
-
 function Section({
   title,
   children,
@@ -2323,27 +2588,6 @@ function CheckCircle({ done }: { done: boolean }) {
   );
 }
 
-function SaveButton({
-  onClick,
-  saved,
-}: {
-  onClick: () => void;
-  saved: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        ...styles.saveBtnSmall,
-        background: saved ? "var(--sage, #8BAF8D)" : "var(--forest, #1E3A2F)",
-        transition: "background 0.3s",
-      }}
-    >
-      {saved ? "Saved ✓" : "Save"}
-    </button>
-  );
-}
-
 function getGreeting() {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
@@ -2362,7 +2606,6 @@ function getDayMessage(daysJoined: number, streak?: number) {
     return "21 days. Science says this is where habits take root. Feel that.";
   if (streak && streak >= 7)
     return "A full week. You've done the hardest part — you started and kept going.";
-
   const dailyMessages: Record<number, string> = {
     0: "Day 1. The hardest and most important day. You showed up.",
     1: "Day 2. Showing up twice is harder than showing up once. You did it.",
